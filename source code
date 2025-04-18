@@ -69,3 +69,110 @@ function updatedLatencies = updateLatencies(latencyMatrix)
     processingPointReductionFactor = 0.9; % Example reduction factor
     updatedLatencies = latencyMatrix * processingPointReductionFactor;
 end
+% Parameters
+numSteps = 10;               % Number of simulation steps
+numSlices = 3;               % Number of network slices
+numNodes = 100;              % Number of nodes in the network
+latencyMatrix = rand(numNodes) * 100;  % Random base latency matrix (example)
+trafficMatrix = randi([0, 12e7], numNodes, numNodes); % Traffic matrix (in bits)
+dataStreams = rand(numNodes, numNodes); % Example data streams
+codingMatrix = rand(numNodes, numNodes); % Random coding matrix
+bandwidthAllocation = rand(1, numSlices) * 100; % Bandwidth allocation for slices
+sourceNode = 1;              % Source node
+targetNode = numNodes;       % Target node
+bestDistance = Inf;          % Initialize best distance
+
+% Main loop to simulate network operation with network coding, traffic impact, and bandwidth optimization
+for step = 1:numSteps
+    for s = 1:numSlices
+        % Update latencies for each slice based on traffic load and dynamic overhead reduction
+        latencyMatrices{s} = updateLatencies(latencyMatrix); % Call the function
+        
+        % Adjust latency based on traffic intensity (higher traffic increases latency)
+        trafficImpact = 1 + (trafficMatrix / max(trafficMatrix(:)));  % Scale traffic impact
+        latencyMatrices{s} = latencyMatrices{s} .* trafficImpact;    % Apply traffic impact on latency
+        
+        % Ensure symmetric adjacency matrix
+        latencyMatrices{s} = (latencyMatrices{s} + latencyMatrices{s}') / 2;
+        latencyMatrices{s}(1:numNodes+1:end) = 0;  % Set diagonal elements to zero
+        
+        % Combine data streams at intermediate nodes using network coding
+        combinedStreams = combineDataStreams(dataStreams, codingMatrix);
+        
+        % Apply bandwidth optimization
+        currentBandwidth = applyBandwidthAllocation(bandwidthAllocation, s, 1.2);  % Improve by 20%
+        
+        % Compute shortest path based on updated latencies using Dijkstra's algorithm
+        [distance, path] = dijkstraPath(latencyMatrices{s}, sourceNode, targetNode);
+        
+        % Check if latency is below 200 ns and update the best path if found
+        if distance < 200
+            if distance < bestDistance
+                bestDistance = distance;
+                bestPath = path;
+                bestSlice = s;
+                bestBandwidth = currentBandwidth;
+            end
+        end
+    end
+end
+
+% Display Results
+fprintf('Best Distance: %.2f ns\n', bestDistance);
+fprintf('Best Path: %s\n', mat2str(bestPath));
+fprintf('Best Slice: %d\n', bestSlice);
+fprintf('Best Bandwidth: %.2f\n', bestBandwidth);
+
+% Supporting Functions
+function updatedLatencies = updateLatencies(latencyMatrix)
+    % Simulate updating latencies based on a reduction factor
+    processingPointReductionFactor = 0.9; % Example reduction factor
+    updatedLatencies = latencyMatrix * processingPointReductionFactor;
+end
+
+function combinedStreams = combineDataStreams(dataStreams, codingMatrix)
+    % Simulate combining data streams with network coding
+    combinedStreams = dataStreams * codingMatrix; % Example: Matrix multiplication
+end
+
+function optimizedBandwidth = applyBandwidthAllocation(bandwidthAllocation, slice, factor)
+    % Simulate bandwidth allocation with optimization
+    optimizedBandwidth = bandwidthAllocation(slice) * factor;
+end
+
+function [distance, path] = dijkstraPath(latencyMatrix, sourceNode, targetNode)
+    % Implementation of Dijkstra's algorithm for shortest path
+    numNodes = size(latencyMatrix, 1);
+    visited = false(1, numNodes);
+    distance = Inf(1, numNodes);
+    previous = NaN(1, numNodes);
+    
+    distance(sourceNode) = 0; % Start at source node
+    
+    while ~all(visited)
+        % Find the unvisited node with the smallest distance
+        [~, u] = min(distance + visited * Inf);
+        if isinf(distance(u)), break; end  % Break if no reachable nodes remain
+        visited(u) = true;
+        
+        % Update distances for neighbors
+        for v = 1:numNodes
+            if ~visited(v) && latencyMatrix(u, v) > 0
+                alt = distance(u) + latencyMatrix(u, v);
+                if alt < distance(v)
+                    distance(v) = alt;
+                    previous(v) = u;
+                end
+            end
+        end
+    end
+    
+    % Extract shortest path
+    path = targetNode;
+    while ~isnan(previous(path(1)))
+        path = [previous(path(1)), path]; %#ok<AGROW>
+    end
+    
+    % Return distance to target node
+    distance = distance(targetNode);
+end
