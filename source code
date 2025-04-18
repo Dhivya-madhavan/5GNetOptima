@@ -1,0 +1,71 @@
+% Initialize Variables
+trafficImpact = 1 + (trafficMatrix / max(trafficMatrix(:)));  % Precompute traffic impact
+latencyMatrix = (latencyMatrix + latencyMatrix') / 2;  % Symmetrize latency matrix
+latencyMatrix(1:numNodes+1:end) = 0;  % Zero diagonal elements
+bestDistance = Inf;  % Initialize global best distance
+
+% Preallocate results
+bestDistances = Inf(1, numSteps);
+bestPaths = cell(1, numSteps);
+bestSlices = zeros(1, numSteps);
+bestBandwidths = zeros(1, numSteps);
+
+% Parallelize the simulation
+parfor step = 1:numSteps
+    localBestDistance = Inf;  % Step-specific best distance
+    localBestPath = [];
+    localBestSlice = 0;
+    localBestBandwidth = 0;
+
+    % Iterate over slices
+    for s = 1:numSlices
+        % Update latencies locally for this slice
+        localLatencyMatrix = updateLatencies(latencyMatrix) .* trafficImpact;
+
+        % Symmetrize the latency matrix
+        localLatencyMatrix = (localLatencyMatrix + localLatencyMatrix') / 2;
+
+        % Combine data streams (local operation)
+        combinedStreams = dataStreams * codingMatrix;
+
+        % Apply bandwidth optimization
+        currentBandwidth = bandwidthAllocation(s) * 1.2;
+
+        % Compute shortest path using MATLAB graph utilities
+        G = graph(localLatencyMatrix);
+        [path, distance] = shortestpath(G, sourceNode, targetNode);
+
+        % Update the best path for this step
+        if ~isempty(distance) && distance < 200 && distance < localBestDistance
+            localBestDistance = distance;
+            localBestPath = path;
+            localBestSlice = s;
+            localBestBandwidth = currentBandwidth;
+        end
+    end
+
+    % Store results for this step
+    bestDistances(step) = localBestDistance;
+    bestPaths{step} = localBestPath;
+    bestSlices(step) = localBestSlice;
+    bestBandwidths(step) = localBestBandwidth;
+end
+
+% Extract global best results from all steps
+[bestDistance, bestStep] = min(bestDistances);
+bestPath = bestPaths{bestStep};
+bestSlice = bestSlices(bestStep);
+bestBandwidth = bestBandwidths(bestStep);
+
+% Display Results
+fprintf('Best Distance: %.2f ns\n', bestDistance);
+fprintf('Best Path: %s\n', mat2str(bestPath));
+fprintf('Best Slice: %d\n', bestSlice);
+fprintf('Best Bandwidth: %.2f\n', bestBandwidth);
+
+% Supporting Functions
+function updatedLatencies = updateLatencies(latencyMatrix)
+    % Simulate updating latencies based on a reduction factor
+    processingPointReductionFactor = 0.9; % Example reduction factor
+    updatedLatencies = latencyMatrix * processingPointReductionFactor;
+end
